@@ -9,8 +9,8 @@ port = 12345
 sz = 128
 
 # send ACK packet
-def send_ACK_packet(sock, address):
-	pkt_header = PacketHeader(type=3, seq_num=1, length=0)
+def send_ACK_packet(sock, address, seqNum):
+	pkt_header = PacketHeader(type=3, seq_num=seqNum, length=0)
 	sock.sendto(bytes(pkt_header), address)
 
 def receiver(receiver_ip, receiver_port, window_size):
@@ -26,22 +26,22 @@ def receiver(receiver_ip, receiver_port, window_size):
 		msg = pkt[16 : 16 + pkt_header.length]
 
 		if pkt_header.type == 0:
-			send_ACK_packet(s, address)
+			send_ACK_packet(s, address, pkt_header.seq_num+1)
 			continue
 		elif pkt_header.type == 1:
-			send_ACK_packet(s, address)
+			send_ACK_packet(s, address, pkt_header.seq_num+1)
 			break
 
 		# Verity checksum
 		pkt_checksum = pkt_header.checksum
 		pkt_header.checksum = 0
 		computed_checksum = compute_checksum(pkt_header / msg)
-		if pkt_checksum != computed_checksum:
-			# print("checksums not match")
-			continue
-		else:
-			send_ACK_packet(s, address)
+		
+		if pkt_checksum == computed_checksum:
+			send_ACK_packet(s, address, pkt_header.seq_num+1)
 			print(msg.decode(), end="")
+		# else:
+			# send_ACK_packet(s, address, pkt_header.seq_num)
 	s.close()
 
 def main():
