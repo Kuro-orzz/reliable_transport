@@ -13,44 +13,48 @@ START = 0
 END = 1
 DATA = 2
 ACK = 3
-MAX_RESEND = 100
+MAX_RESEND = 10
+MAX_PAYLOAD = 1456
 
 # Wait for response
-def wait_for_ack(sock):
+def wait_for_ack(sock, seqNum):
     try:
-        data, _ = sock.recvfrom(1472)
-        ack = PacketHeader(data[:16])
-        if ack.type == 3:
-            return True
+        while True:
+            data, _ = sock.recvfrom(1472)
+            ack = PacketHeader(data[:16])
+            if ack.type == 3 and ack.seq_num == seqNum + 1:
+                return True
     except socket.timeout:
         return False
 
-# Send start packet and wait 500ms for ACK, if not receive, resend start packet
+# Send start packet and wait 500ms for ACK, if not receive, resend packet
 # START = 0, END = 1, DATA = 2, ACK = 3
-def send_packet(sock, recv_ip, recv_port, pkt_type, seqNum):
+def send_packet(sock, recv_ip, recv_port, pkt_type, seqNum) -> bool:
     pkt_header = PacketHeader(type=pkt_type, seq_num=seqNum, length=0)
     count = 0
     while count < MAX_RESEND:
         sock.sendto(bytes(pkt_header), (recv_ip, recv_port))
-        if wait_for_ack(sock) == True:
+        if wait_for_ack(sock, seqNum) == True:
             if pkt_type == 0: print("START ACKed", seqNum)
             elif pkt_type == 1: print("END ACKed", seqNum)
-            return
+            return True
         print("Resend")
         count += 1
+    return False
 
-def send_data_packet(sock, msg, recv_ip, recv_port, seqNum):
+def send_data_packet(sock, msg, recv_ip, recv_port, seqNum) -> bool:
     pkt_header = PacketHeader(type=2, seq_num=seqNum, length=len(msg))
     pkt_header.checksum = compute_checksum(pkt_header / msg)
     pkt = pkt_header / msg
     count = 0
     while count < MAX_RESEND:
         sock.sendto(bytes(pkt), (recv_ip, recv_port))
-        if wait_for_ack(sock) == True:
+        if wait_for_ack(sock, seqNum) == True:
             print("DATA ACKed", seqNum)
-            return
+            return True
         print("Resend data packet")
         count += 1
+    return False
 
 def split_message(message, chunk_size):
     chunks = [message[i:i + chunk_size] for i in range(0, len(message), chunk_size)]
@@ -60,19 +64,34 @@ def sender(receiver_ip, receiver_port, window_size):
     """TODO: Open socket and send message from sys.stdin."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.settimeout(0.5)
-    msg = input()
+    msg = sys.stdin.buffer.read()
 
     seqNum = 0
 
-    send_packet(s, receiver_ip, receiver_port, START, seqNum)
-    seqNum += 1
-
-    listMsg = split_message(msg, 1456)
-    for message in listMsg:
-        send_data_packet(s, message, receiver_ip, receiver_port, seqNum)
+    # handle START packet
+    if send_packet(s, receiver_ip, receiver_port, START, seqNum):
         seqNum += 1
+    else:
+        print("Fail to send START packet")
+        return
 
-    send_packet(s, receiver_ip, receiver_port, END, seqNum)
+    # Split message
+    listMsg = split_message(msg, MAX_PAYLOAD)
+
+    # send and handle DATA packet
+    for message in listMsg:
+        if send_data_packet(s, message, receiver_ip, receiver_port, seqNum):
+            seqNum += 1
+        else:
+            print("Fail to send DATA packet")
+            return
+
+    # handle END packet
+    if send_packet(s, receiver_ip, receiver_port, END, seqNum):
+        seqNum += 1
+    else:
+        print("Fail to send END packet")
+        return
 
 def main():
     parser = argparse.ArgumentParser()

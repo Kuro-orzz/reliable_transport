@@ -17,6 +17,9 @@ def receiver(receiver_ip, receiver_port, window_size):
 	"""TODO: Listen on socket and print received message to sys.stdout."""
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	s.bind((receiver_ip, receiver_port))
+
+	expected_seqNum = 0
+
 	while True:
 		# Receive packet; address includes both IP and port
 		pkt, address = s.recvfrom(1472)
@@ -25,8 +28,10 @@ def receiver(receiver_ip, receiver_port, window_size):
 		pkt_header = PacketHeader(pkt[:16])
 		msg = pkt[16 : 16 + pkt_header.length]
 
-		if pkt_header.type == 0:
-			send_ACK_packet(s, address, pkt_header.seq_num+1)
+		# Send back ACK for START, END packet
+		if pkt_header.type == 0 and expected_seqNum == 0:
+			send_ACK_packet(s, address, 1)
+			expected_seqNum += 1
 			continue
 		elif pkt_header.type == 1:
 			send_ACK_packet(s, address, pkt_header.seq_num+1)
@@ -37,11 +42,13 @@ def receiver(receiver_ip, receiver_port, window_size):
 		pkt_header.checksum = 0
 		computed_checksum = compute_checksum(pkt_header / msg)
 		
-		if pkt_checksum == computed_checksum:
+		if pkt_checksum == computed_checksum and expected_seqNum == pkt_header.seq_num:
 			send_ACK_packet(s, address, pkt_header.seq_num+1)
-			print(msg.decode(), end="")
-		# else:
-			# send_ACK_packet(s, address, pkt_header.seq_num)
+			expected_seqNum += 1
+			sys.stdout.buffer.write(msg)
+			sys.stdout.buffer.flush()
+		else:
+			send_ACK_packet(s, address, 0)
 	s.close()
 
 def main():
