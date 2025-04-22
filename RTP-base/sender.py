@@ -13,8 +13,8 @@ START = 0
 END = 1
 DATA = 2
 ACK = 3
-MAX_RESEND = 10
-MAX_PAYLOAD = 1450
+MAX_RESEND = 100
+MAX_PAYLOAD = 1456
 
 # Wait for response
 def wait_for_ack(sock, seqNum):
@@ -63,7 +63,7 @@ def split_message(message, chunk_size):
 def sender(receiver_ip, receiver_port, window_size):
     """TODO: Open socket and send message from sys.stdin."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.settimeout(1.0)
+    s.settimeout(0.5)
     msg = sys.stdin.buffer.read()
 
     seqNum = 0

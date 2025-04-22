@@ -48,7 +48,7 @@ def receiver(receiver_ip, receiver_port, window_size):
 			sys.stdout.buffer.write(msg)
 			sys.stdout.buffer.flush()
 		else:
-			send_ACK_packet(s, address, pkt_header.seq_num)
+			send_ACK_packet(s, address, 0)
 	s.close()
 
 def main():
