@@ -28,29 +28,29 @@ def receiver(receiver_ip, receiver_port, window_size):
 		pkt_header = PacketHeader(pkt[:16])
 		msg = pkt[16 : 16 + pkt_header.length]
 
-		# Send back ACK for START, END packet
-		if pkt_header.type == 0 and expected_seqNum == 0:
-			send_ACK_packet(s, address, 1)
-			expected_seqNum += 1
-			continue
-		elif pkt_header.type == 1:
-			send_ACK_packet(s, address, pkt_header.seq_num+1)
-			break
+		# if packet not in order
 		if pkt_header.seq_num != expected_seqNum:
 			send_ACK_packet(s, address, expected_seqNum)
 			continue
+
+		# Handle START, END packet
+		if pkt_header.type == 0:
+			expected_seqNum += 1
+			send_ACK_packet(s, address, expected_seqNum)
+			continue
+		if pkt_header.type == 1:
+			break
+
 		# Verity checksum
 		pkt_checksum = pkt_header.checksum
 		pkt_header.checksum = 0
 		computed_checksum = compute_checksum(pkt_header / msg)
 		
 		if pkt_checksum == computed_checksum:
-			send_ACK_packet(s, address, pkt_header.seq_num+1)
 			expected_seqNum += 1
+			send_ACK_packet(s, address, expected_seqNum)
 			sys.stdout.buffer.write(msg)
 			sys.stdout.buffer.flush()
-		else:
-			send_ACK_packet(s, address, 0)
 	s.close()
 
 def main():

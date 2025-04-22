@@ -56,6 +56,16 @@ def send_data_packet(sock, msg, recv_ip, recv_port, seqNum) -> bool:
     print("Fail to send DATA packet")
     return False
 
+def waitAck(sock, seqNum) -> int:
+    try:
+        while True:
+            data, _ = sock.recvfrom(1472)
+            ack = PacketHeader(data[:16])
+            if ack.type == 3:
+                return ack.seq_num
+    except socket.timeout:
+        return seqNum
+
 def split_message(message, chunk_size):
     chunks = [message[i:i + chunk_size] for i in range(0, len(message), chunk_size)]
     return chunks
@@ -75,16 +85,21 @@ def sender(receiver_ip, receiver_port, window_size):
         s.close()
         return
 
-    # Split message
+    # Split message and make packet
     listMsg = split_message(msg, MAX_PAYLOAD)
+    msgPacket = [0]
+    for i in range(len(listMsg)):
+        pkt_header = PacketHeader(type=2, seq_num=i+1, length=len(listMsg[i]))
+        pkt_header.checksum = compute_checksum(pkt_header / listMsg[i])
+        pkt = pkt_header / listMsg[i]
+        msgPacket.append(pkt)
 
-    # send and handle DATA packet
-    for message in listMsg:
-        if send_data_packet(s, message, receiver_ip, receiver_port, seqNum):
-            seqNum += 1
-        else:
-            s.close()
-            return
+    # Send DATA packet
+    while seqNum <= len(listMsg):
+        limit = min(seqNum+window_size+1, len(listMsg)+1)
+        for i in range(seqNum, limit):
+            s.sendto(bytes(msgPacket[i]), (receiver_ip, receiver_port))
+        seqNum = max(seqNum, waitAck(s, seqNum))
 
     # handle END packet
     s.settimeout(0.5)
