@@ -27,8 +27,8 @@ def wait_for_ack(sock, seqNum):
     except socket.timeout:
         return False
 
-# Send start packet and wait 500ms for ACK, if not receive, resend packet
-# START = 0, END = 1, DATA = 2, ACK = 3
+# Send start packet and wait for ACK, if not receive, resend packet
+# Timeout for START and DATA is 0.1s, END is 0.5s
 def send_packet(sock, recv_ip, recv_port, pkt_type, seqNum) -> bool:
     pkt_header = PacketHeader(type=pkt_type, seq_num=seqNum, length=0)
     count = 0
