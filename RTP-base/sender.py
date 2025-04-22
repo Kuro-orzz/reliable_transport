@@ -35,11 +35,12 @@ def send_packet(sock, recv_ip, recv_port, pkt_type, seqNum) -> bool:
     while count < MAX_RESEND:
         sock.sendto(bytes(pkt_header), (recv_ip, recv_port))
         if wait_for_ack(sock, seqNum) == True:
-            if pkt_type == 0: print("START ACKed", seqNum)
-            elif pkt_type == 1: print("END ACKed", seqNum)
             return True
-        print("Resend")
         count += 1
+    if pkt_type == 0:
+        print("Fail to send START packet")
+    if pkt_type == 1:
+        print("Fail to send END packet")
     return False
 
 def send_data_packet(sock, msg, recv_ip, recv_port, seqNum) -> bool:
@@ -50,10 +51,9 @@ def send_data_packet(sock, msg, recv_ip, recv_port, seqNum) -> bool:
     while count < MAX_RESEND:
         sock.sendto(bytes(pkt), (recv_ip, recv_port))
         if wait_for_ack(sock, seqNum) == True:
-            print("DATA ACKed", seqNum)
             return True
-        print("Resend data packet")
         count += 1
+    print("Fail to send DATA packet")
     return False
 
 def split_message(message, chunk_size):
@@ -63,7 +63,7 @@ def split_message(message, chunk_size):
 def sender(receiver_ip, receiver_port, window_size):
     """TODO: Open socket and send message from sys.stdin."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.settimeout(0.5)
+    s.settimeout(0.1)
     msg = sys.stdin.buffer.read()
 
     seqNum = 0
@@ -72,7 +72,7 @@ def sender(receiver_ip, receiver_port, window_size):
     if send_packet(s, receiver_ip, receiver_port, START, seqNum):
         seqNum += 1
     else:
-        print("Fail to send START packet")
+        s.close()
         return
 
     # Split message
@@ -83,15 +83,15 @@ def sender(receiver_ip, receiver_port, window_size):
         if send_data_packet(s, message, receiver_ip, receiver_port, seqNum):
             seqNum += 1
         else:
-            print("Fail to send DATA packet")
+            s.close()
             return
 
     # handle END packet
+    s.settimeout(0.5)
     if send_packet(s, receiver_ip, receiver_port, END, seqNum):
         seqNum += 1
-    else:
-        print("Fail to send END packet")
-        return
+
+    s.close()
 
 def main():
     parser = argparse.ArgumentParser()

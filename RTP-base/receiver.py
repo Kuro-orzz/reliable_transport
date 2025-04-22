@@ -36,13 +36,15 @@ def receiver(receiver_ip, receiver_port, window_size):
 		elif pkt_header.type == 1:
 			send_ACK_packet(s, address, pkt_header.seq_num+1)
 			break
-
+		if pkt_header.seq_num != expected_seqNum:
+			send_ACK_packet(s, address, expected_seqNum)
+			continue
 		# Verity checksum
 		pkt_checksum = pkt_header.checksum
 		pkt_header.checksum = 0
 		computed_checksum = compute_checksum(pkt_header / msg)
 		
-		if pkt_checksum == computed_checksum and expected_seqNum == pkt_header.seq_num:
+		if pkt_checksum == computed_checksum:
 			send_ACK_packet(s, address, pkt_header.seq_num+1)
 			expected_seqNum += 1
 			sys.stdout.buffer.write(msg)
