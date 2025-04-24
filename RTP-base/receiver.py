@@ -49,6 +49,7 @@ def receiver(receiver_ip, receiver_port, window_size):
 		# if packet not equal expected packet, send ACK
 		if pkt_header.seq_num != expected_seqNum:
 			buffer[pkt_header.seq_num] = msg
+			send_ACK_packet(s, address, expected_seqNum)
 			continue
 
 		# Handle START, END packet
@@ -57,10 +58,6 @@ def receiver(receiver_ip, receiver_port, window_size):
 			send_ACK_packet(s, address, expected_seqNum)
 			continue
 		if pkt_header.type == END:
-			pkt_header.checksum = 0
-			new_checksum = compute_checksum(pkt_header)
-			if recv_checksum != new_checksum:
-				continue
 			expected_seqNum += 1
 			send_ACK_packet(s, address, expected_seqNum)
 			break
