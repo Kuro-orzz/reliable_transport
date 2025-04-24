@@ -13,58 +13,28 @@ START = 0
 END = 1
 DATA = 2
 ACK = 3
-MAX_RESEND = 100
 MAX_PAYLOAD = 1456
 
 # Wait for response
-def wait_for_ack(sock, seqNum):
+def wait_for_ack(sock, seqNum) -> int:
+    nextSeq = seqNum
     try:
         while True:
             data, _ = sock.recvfrom(1472)
             ack = PacketHeader(data[:16])
-            if ack.type == 3 and ack.seq_num == seqNum + 1:
-                return True
+            if ack.type == 3 and ack.seq_num > nextSeq:
+                nextSeq = ack.seq_num
     except socket.timeout:
-        return False
+        return nextSeq
 
 # Send start packet and wait for ACK, if not receive, resend packet
 # Timeout for START and DATA is 0.1s, END is 0.5s
 def send_packet(sock, recv_ip, recv_port, pkt_type, seqNum) -> bool:
     pkt_header = PacketHeader(type=pkt_type, seq_num=seqNum, length=0)
-    count = 0
-    while count < MAX_RESEND:
-        sock.sendto(bytes(pkt_header), (recv_ip, recv_port))
-        if wait_for_ack(sock, seqNum) == True:
-            return True
-        count += 1
-    if pkt_type == 0:
-        print("Fail to send START packet")
-    if pkt_type == 1:
-        print("Fail to send END packet")
+    sock.sendto(bytes(pkt_header), (recv_ip, recv_port))
+    if wait_for_ack(sock, seqNum) == seqNum + 1:
+        return True
     return False
-
-def send_data_packet(sock, msg, recv_ip, recv_port, seqNum) -> bool:
-    pkt_header = PacketHeader(type=2, seq_num=seqNum, length=len(msg))
-    pkt_header.checksum = compute_checksum(pkt_header / msg)
-    pkt = pkt_header / msg
-    count = 0
-    while count < MAX_RESEND:
-        sock.sendto(bytes(pkt), (recv_ip, recv_port))
-        if wait_for_ack(sock, seqNum) == True:
-            return True
-        count += 1
-    print("Fail to send DATA packet")
-    return False
-
-def waitAck(sock, seqNum) -> int:
-    try:
-        while True:
-            data, _ = sock.recvfrom(1472)
-            ack = PacketHeader(data[:16])
-            if ack.type == 3:
-                return ack.seq_num
-    except socket.timeout:
-        return seqNum
 
 def split_message(message, chunk_size):
     chunks = [message[i:i + chunk_size] for i in range(0, len(message), chunk_size)]
@@ -79,11 +49,11 @@ def sender(receiver_ip, receiver_port, window_size):
     seqNum = 0
 
     # handle START packet
-    if send_packet(s, receiver_ip, receiver_port, START, seqNum):
-        seqNum += 1
-    else:
-        s.close()
-        return
+    start_ack = False
+    while not start_ack:
+        if send_packet(s, receiver_ip, receiver_port, START, seqNum):
+            seqNum += 1
+            start_ack = True
 
     # Split message and make packet
     listMsg = split_message(msg, MAX_PAYLOAD)
@@ -99,14 +69,19 @@ def sender(receiver_ip, receiver_port, window_size):
         limit = min(seqNum+window_size+1, len(listMsg)+1)
         for i in range(seqNum, limit):
             s.sendto(bytes(msgPacket[i]), (receiver_ip, receiver_port))
-        seqNum = max(seqNum, waitAck(s, seqNum))
+        seqNum = max(seqNum, wait_for_ack(s, seqNum))
 
     # handle END packet
-    s.settimeout(0.5)
-    if send_packet(s, receiver_ip, receiver_port, END, seqNum):
-        seqNum += 1
+    s.settimeout(0.1)
+    end_ack = False
+    while not end_ack:
+        if send_packet(s, receiver_ip, receiver_port, END, seqNum):
+            end_ack = True
 
     s.close()
+    with open("test.txt", "a") as f:
+        f.write("end\n")
+        f.flush()
 
 def main():
     parser = argparse.ArgumentParser()

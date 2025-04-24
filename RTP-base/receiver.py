@@ -1,12 +1,18 @@
 import argparse
 import socket
 import sys
+import time
 
 from utils import PacketHeader, compute_checksum
 
 ip = "0.0.0.0"
 port = 12345
 sz = 128
+
+START = 0
+END = 1
+DATA = 2
+ACK = 3
 
 # send ACK packet
 def send_ACK_packet(sock, address, seqNum):
@@ -27,6 +33,7 @@ def receiver(receiver_ip, receiver_port, window_size):
 		# Extract header and payload
 		pkt_header = PacketHeader(pkt[:16])
 		msg = pkt[16 : 16 + pkt_header.length]
+		recv_checksum = pkt_header.checksum
 
 		# if packet not in order
 		if pkt_header.seq_num != expected_seqNum:
@@ -34,19 +41,21 @@ def receiver(receiver_ip, receiver_port, window_size):
 			continue
 
 		# Handle START, END packet
-		if pkt_header.type == 0:
+		if pkt_header.type == START:
 			expected_seqNum += 1
 			send_ACK_packet(s, address, expected_seqNum)
 			continue
-		if pkt_header.type == 1:
+		if pkt_header.type == END:
+			expected_seqNum += 1
+			send_ACK_packet(s, address, expected_seqNum)
+			time.sleep(1)
 			break
 
 		# Verity checksum
-		pkt_checksum = pkt_header.checksum
 		pkt_header.checksum = 0
-		computed_checksum = compute_checksum(pkt_header / msg)
+		new_checksum = compute_checksum(pkt_header / msg)
 		
-		if pkt_checksum == computed_checksum:
+		if recv_checksum == new_checksum:
 			expected_seqNum += 1
 			send_ACK_packet(s, address, expected_seqNum)
 			sys.stdout.buffer.write(msg)
