@@ -27,12 +27,24 @@ def wait_for_ack(sock, seqNum) -> int:
     except socket.timeout:
         return nextSeq
 
+def wait_end_ack(sock, seqNum) -> bool:
+    try:
+        data, _ = sock.recvfrom(1472)
+        ack = PacketHeader(data[:16])
+        if ack.type == 3 and ack.seq_num == seqNum + 1:
+            return True
+    except socket.timeout:
+        return False
+
 # Send start packet and wait for ACK, if not receive, resend packet
 # Timeout for START and DATA is 0.1s, END is 0.5s
 def send_packet(sock, recv_ip, recv_port, pkt_type, seqNum) -> bool:
     pkt_header = PacketHeader(type=pkt_type, seq_num=seqNum, length=0)
+    pkt_header.checksum = compute_checksum(pkt_header)
     sock.sendto(bytes(pkt_header), (recv_ip, recv_port))
-    if wait_for_ack(sock, seqNum) == seqNum + 1:
+    if pkt_type != END and wait_for_ack(sock, seqNum) == seqNum + 1:
+        return True
+    if pkt_type == END and wait_end_ack(sock, seqNum):
         return True
     return False
 
@@ -43,7 +55,7 @@ def split_message(message, chunk_size):
 def sender(receiver_ip, receiver_port, window_size):
     """TODO: Open socket and send message from sys.stdin."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.settimeout(0.1)
+    s.settimeout(0.5)
     msg = sys.stdin.buffer.read()
 
     seqNum = 0
@@ -72,16 +84,8 @@ def sender(receiver_ip, receiver_port, window_size):
         seqNum = max(seqNum, wait_for_ack(s, seqNum))
 
     # handle END packet
-    s.settimeout(0.1)
-    end_ack = False
-    while not end_ack:
-        if send_packet(s, receiver_ip, receiver_port, END, seqNum):
-            end_ack = True
-
+    end_ack = send_packet(s, receiver_ip, receiver_port, END, seqNum)
     s.close()
-    with open("test.txt", "a") as f:
-        f.write("end\n")
-        f.flush()
 
 def main():
     parser = argparse.ArgumentParser()
